@@ -248,6 +248,17 @@ struct _Process {
     MAGIC_DECLARE;
 };
 
+/* Chunk of shared memory for storing the circuit list. */
+static void* shared_memory_pool;
+static pthread_mutex_t shared_memory_lock;
+static char shared_memory_pool_name[] = "--shadow-memory-address";
+static char shared_memory_pool_addr[50];
+static char shared_memory_lock_name[] = "--shadow-lock-address";
+static char shared_memory_lock_addr[50];
+static int shared_list_counter = 0;
+static char shared_list_counter_name[] = "--shadow-list-counter-address";
+static char shared_list_counter_addr[50];
+
 static ProcessContext _process_changeContext(Process* proc, ProcessContext from, ProcessContext to) {
     ProcessContext prevContext = PCTX_NONE;
     if(from == PCTX_SHADOW) {
@@ -743,6 +754,11 @@ static void _process_handleTimerResult(Process* proc, gdouble elapsedTimeSec) {
     tracker_addProcessingTime(host_getTracker(currentHost), delay);
 }
 
+static void _allocate_and_copy_string(char** dst, const char* src) {
+  *dst = (char*) malloc(sizeof(char) * (1 + strlen(src)));
+  strcpy(*dst, src);
+}
+
 static gint _process_getArguments(Process* proc, gchar** argvOut[]) {
     gchar* threadBuffer;
 
@@ -766,10 +782,34 @@ static gint _process_getArguments(Process* proc, gchar** argvOut[]) {
 
     /* setup for creating new plug-in, i.e. format into argc and argv */
     gint argc = g_queue_get_length(arguments);
-    /* a pointer to an array that holds pointers */
-    gchar** argv = g_new0(gchar*, argc);
 
-    for(gint i = 0; i < argc; i++) {
+    
+    // add six separate strings to command line args
+    // only done for tor processes
+    // --shadow-memory-address {MEM ADDRESS}
+    // --shadow-lock-address {LOCK ADDRESS}
+    // --shadow-list-counter {COUNTER ADDRESS}
+    gchar** argv;
+    if (strcmp(proc->plugin.name[0].str, "tor") == 0) {
+      argc += 6;
+      /* a pointer to an array that holds pointers */
+      argv = g_new0(gchar*, argc);
+
+      for (gint i = 0; i < argc - 4; i++)
+        argv[i] = g_queue_pop_head(arguments);
+
+      sprintf(shared_memory_pool_addr, "%p", &shared_memory_pool);
+      sprintf(shared_memory_lock_addr, "%p", &shared_memory_lock);
+      sprintf(shared_list_counter_addr, "%p", &shared_list_counter);
+      _allocate_and_copy_string(&(argv[argc - 6]), shared_list_counter_name);
+      _allocate_and_copy_string(&(argv[argc - 5]), shared_list_counter_addr);
+      _allocate_and_copy_string(&(argv[argc - 4]), shared_memory_pool_name);
+      _allocate_and_copy_string(&(argv[argc - 3]), shared_memory_pool_addr);
+      _allocate_and_copy_string(&(argv[argc - 2]), shared_memory_lock_name);
+      _allocate_and_copy_string(&(argv[argc - 1]), shared_memory_lock_addr);
+    } else {
+      argv = g_new0(gchar*, argc);
+      for (gint i = 0; i < argc; i++)
         argv[i] = g_queue_pop_head(arguments);
     }
 
@@ -1988,6 +2028,17 @@ void* process_emu_mmap(Process* proc, void *addr, size_t length, int prot, int f
     return MAP_FAILED;
 }
 
+void process_shared_memory_lock_init() {
+    pthread_mutex_init(&shared_memory_lock, NULL);
+}
+
+void process_shared_memory_pool_malloc(int num_bytes) {
+    shared_memory_pool = malloc(num_bytes);
+}
+
+void process_shared_memory_pool_free() {
+    free(shared_memory_pool);
+}
 
 /* event family */
 

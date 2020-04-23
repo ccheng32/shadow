@@ -114,6 +114,9 @@ void* process_emu_aligned_alloc(Process* proc, size_t alignment, size_t size);
 void* process_emu_valloc(Process* proc, size_t size);
 void* process_emu_pvalloc(Process* proc, size_t size);
 void* process_emu_mmap(Process* proc, void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+void process_shared_memory_lock_init(void);
+void process_shared_memory_pool_malloc(int num_bytes);
+void process_shared_memory_pool_free(void);
 
 /* event family */
 

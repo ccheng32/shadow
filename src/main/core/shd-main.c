@@ -19,6 +19,8 @@
 static Master* shadowMaster;
 
 #define INTERPOSELIBSTR "libshadow-interpose.so"
+#define SHADOW_MAX_SHARED_CIRCUITS 100000
+#define SHADOW_SHARED_CIRCUIT_TYPE_SIZE (4*4)
 
 static gchar* _main_getRPath() {
     const ElfW(Dyn) *dyn = _DYNAMIC;
@@ -774,6 +776,11 @@ gint main_runShadow(gint argc, gchar* argv[]) {
     Logger* shadowLogger = logger_new(options_getLogLevel(options));
     logger_setDefault(shadowLogger);
 
+    /* initialize mutex here */
+    process_shared_memory_lock_init();
+    process_shared_memory_pool_malloc(SHADOW_MAX_SHARED_CIRCUITS * SHADOW_SHARED_CIRCUIT_TYPE_SIZE);
+
+
     /* disable buffering during startup so that we see every message immediately in the terminal */
     logger_setEnableBuffering(shadowLogger, FALSE);
 
@@ -785,6 +792,8 @@ gint main_runShadow(gint argc, gchar* argv[]) {
         logger_setDefault(NULL);
         logger_unref(logger);
     }
+
+    process_shared_memory_pool_free();
 
     g_printerr("** Stopping Shadow, returning code %i (%s)\n", returnCode, (returnCode == 0) ? "success" : "error");
     return returnCode;
